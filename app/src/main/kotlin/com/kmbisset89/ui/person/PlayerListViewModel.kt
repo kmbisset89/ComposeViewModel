@@ -3,13 +3,18 @@ package com.kmbisset89.ui.person
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.kmbisset89.dal.person.Area
+import com.kmbisset89.dal.person.Player
 import com.kmbisset89.ui.viewmodel.IComposableStateHandler
 import com.kmbisset89.ui.viewmodel.IPrimitiveDataStoreProvider
 import com.kmbisset89.ui.viewmodel.PrimitiveDataStore
 import com.kmbisset89.ui.viewmodel.StatedComposeViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalMaterial3Api::class)
 /**
@@ -26,15 +31,25 @@ import kotlinx.coroutines.launch
  * @see StatedComposeViewModel for more about stateful ViewModels designed for Compose.
  * @see PrimitiveDataStore for the data structure responsible for state retention.
  */
-class PersonListViewModel(
+class PlayerListViewModel(
     iPrimitiveDataStoreProvider: IPrimitiveDataStoreProvider,
     iComposableStateHandler: IComposableStateHandler,
     private val composeScope: CoroutineScope,
-) : StatedComposeViewModel(iPrimitiveDataStoreProvider, iComposableStateHandler, id = "personList") {
+) : StatedComposeViewModel(iPrimitiveDataStoreProvider, iComposableStateHandler, id = "playerList") {
 
     companion object {
         private const val KEY_BOTTOM_SHEET_STATE = "bottomSheetState"
+        private const val KEY_LIST = "list"
+        private const val KEY_TAB_SELECTED = "tabSelected"
     }
+
+    internal val tabs: List<String> = listOf("All", "Offense", "Defense", "Special Teams")
+
+    internal val selectedTab = mutableIntStateOf(
+        primitiveData?.getInt(
+            KEY_TAB_SELECTED,
+        ) ?: 0
+    )
 
     internal val bottomSheetState = SheetState(
         skipPartiallyExpanded = true,
@@ -44,14 +59,19 @@ class PersonListViewModel(
         skipHiddenState = false
     )
 
-    internal val personList = mutableStateOf<List<Person>>(emptyList())
+    private val allPlayers = ArrayList(primitiveData?.getString(KEY_LIST)?.let {
+        Json.decodeFromString(ListSerializer(Player.serializer()), it)
+    } ?: emptyList()
+    )
 
-    internal val currentPersonEdited = mutableStateOf(
+    internal val playerList = mutableStateOf(determinePlayerList())
+
+    internal val currentPlayerEdited = mutableStateOf(
         if (primitiveData?.getInt(
                 KEY_BOTTOM_SHEET_STATE,
             ) == SheetValue.Expanded.ordinal
         ) {
-            Person("", "")
+            Player("", "", setOf())
         } else {
             null
         }
@@ -60,33 +80,60 @@ class PersonListViewModel(
     override fun retainState(): PrimitiveDataStore {
         return PrimitiveDataStore().apply {
             putInt(KEY_BOTTOM_SHEET_STATE, bottomSheetState.currentValue.ordinal)
+            putString(KEY_LIST, Json.encodeToString(ListSerializer(Player.serializer()), allPlayers))
         }
     }
 
-    internal fun onInteraction(interactions: PersonListInteractions) {
+    internal fun onInteraction(interactions: PlayerListInteractions) {
         when (interactions) {
-            is PersonListInteractions.ShowAddPersonForm -> {
+            is PlayerListInteractions.ShowAddPlayerForm -> {
                 composeScope.launch {
-                    currentPersonEdited.value = Person("", "")
+                    currentPlayerEdited.value = Player("", "", setOf())
                     bottomSheetState.expand()
                 }
             }
 
-            is PersonListInteractions.PerformFormFinished -> {
+            is PlayerListInteractions.PerformFormFinished -> {
                 when (interactions.formResult) {
-                    is PersonFormResult.FormFinished -> {
-                        personList.value += interactions.formResult.person
+                    is PlayerFormResult.FormFinished -> {
+                        allPlayers.add(interactions.formResult.player)
+                        playerList.value = determinePlayerList()
                     }
 
-                    PersonFormResult.Cancelled -> {
+                    PlayerFormResult.Cancelled -> {
                         // No implementation needed.
                     }
                 }
 
                 composeScope.launch {
                     bottomSheetState.hide()
-                    currentPersonEdited.value = null
+                    currentPlayerEdited.value = null
                 }
+            }
+
+            is PlayerListInteractions.SelectTab -> {
+                selectedTab.intValue = interactions.index
+                playerList.value = determinePlayerList()
+            }
+        }
+    }
+
+    private fun determinePlayerList(): List<Player> {
+        return when (selectedTab.intValue) {
+            Area.Offense.ordinal + 1 -> {
+                allPlayers.filter { it.areas.contains(Area.Offense) }
+            }
+
+            Area.Defense.ordinal + 1 -> {
+                allPlayers.filter { it.areas.contains(Area.Defense) }
+            }
+
+            Area.SpecialTeams.ordinal + 1 -> {
+                allPlayers.filter { it.areas.contains(Area.SpecialTeams) }
+            }
+
+            else -> {
+                allPlayers
             }
         }
     }

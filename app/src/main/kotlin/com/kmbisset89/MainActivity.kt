@@ -7,14 +7,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeContent
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -22,44 +17,47 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
-import com.kmbisset89.ui.person.Person
-import com.kmbisset89.ui.person.PersonFormResult
-import com.kmbisset89.ui.person.PersonFormViewModel
-import com.kmbisset89.ui.person.PersonListInteractions
-import com.kmbisset89.ui.person.PersonListViewModel
+import com.kmbisset89.dal.person.Area
+import com.kmbisset89.dal.person.Player
+import com.kmbisset89.ui.person.PlayerFormResult
+import com.kmbisset89.ui.person.PlayerFormViewModel
+import com.kmbisset89.ui.person.PlayerListInteractions
+import com.kmbisset89.ui.person.PlayerListViewModel
 import com.kmbisset89.ui.theme.MyApplicationTheme
 import com.kmbisset89.ui.viewmodel.AndroidStateHandler
 import com.kmbisset89.ui.viewmodel.IComposableStateHandler
 import com.kmbisset89.ui.viewmodel.IPrimitiveDataStoreProvider
 import com.kmbisset89.ui.viewmodel.StatedComposableViewModel
-import com.kmbisset89.ui.viewmodel.StatedComposeViewModel
+import com.kmbisset89.ui.viewmodel.StatedNavComposableViewModel
 import com.kmbisset89.ui.widget.TextEntry
 
 /**
  * The main entry point for the application.
  *
  * [MainActivity] is responsible for rendering the UI associated with managing a list of persons.
- * The UI is defined in [PersonListUi]. It utilizes the [StatedComposableViewModel] composable function
- * to create and provide the [PersonListViewModel] instance, which in turn handles the state and interactions
+ * The UI is defined in [PlayerListView]. It utilizes the [StatedComposableViewModel] composable function
+ * to create and provide the [PlayerListViewModel] instance, which in turn handles the state and interactions
  * of the list of persons. This ViewModel is designed to retain and restore its state during lifecycle changes,
  * like orientation swaps, using [AndroidStateHandler].
  *
  * @see StatedComposableViewModel for more about stateful ViewModels designed for Compose.
  * @see AndroidStateHandler for state retention and restoration mechanism.
- * @see PersonListViewModel for managing state and interactions of the person list.
- * @see PersonListUi for the visual representation of the person list.
+ * @see PlayerListViewModel for managing state and interactions of the person list.
+ * @see PlayerListView for the visual representation of the person list.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,14 +65,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
-                val coroutineScope = rememberCoroutineScope()
+                StatedNavComposableViewModel()
                 StatedComposableViewModel(
                     primitiveDataStoreProvider = AndroidStateHandler,
                     composableStateHandler = AndroidStateHandler,
                     factory = { iPrimitiveDataStoreProvider: IPrimitiveDataStoreProvider, iComposableStateHandler: IComposableStateHandler ->
-                        PersonListViewModel(iPrimitiveDataStoreProvider, iComposableStateHandler, coroutineScope)
+                        PlayerListViewModel(iPrimitiveDataStoreProvider, iComposableStateHandler, coroutineScope)
                     }) { vm ->
-                    PersonListUi(vm)
+                    PlayerListView(vm)
                 }
             }
         }
@@ -89,35 +87,50 @@ class MainActivity : ComponentActivity() {
  * a floating action button for adding new persons. Clicking the floating action button will open up
  * a [ModalBottomSheet] with a form UI for creating a new person.
  *
- * The UI and its interactions are driven by the provided [PersonListViewModel] (referred as `vm` in the code).
+ * The UI and its interactions are driven by the provided [PlayerListViewModel] (referred as `vm` in the code).
  *
  * - If there's an ongoing person edit (as reflected by `vm.currentPersonEdited`), the bottom sheet with the
  *   form UI will be displayed.
  * - The list of persons (`vm.personList`) is displayed using a [LazyColumn] with individual [Card] elements.
  *
- * @param vm The [PersonListViewModel] instance responsible for managing the state and interactions of the person list.
+ * @param vm The [PlayerListViewModel] instance responsible for managing the state and interactions of the person list.
  *
  * @see PersonFormUi for the UI representation of the person form inside the bottom sheet.
- * @see PersonFormViewModel for managing state and interactions of the person form.
+ * @see PlayerFormViewModel for managing state and interactions of the person form.
  */
 @Composable
-private fun PersonListUi(vm: PersonListViewModel) {
+fun PlayerListView(vm: PlayerListViewModel) {
     Scaffold(
         floatingActionButton = {
             FloatingActionButton({
-                vm.onInteraction(PersonListInteractions.ShowAddPersonForm)
+                vm.onInteraction(PlayerListInteractions.ShowAddPlayerForm)
             }) {
                 Icon(imageVector = Icons.Filled.Add, contentDescription = "Add Person")
             }
         },
 
-    ) { contentPadding ->
-
+        ) { contentPadding ->
         Column(modifier = Modifier.padding(contentPadding)) {
-            if (vm.currentPersonEdited.value != null) {
+
+            TabRow(
+                selectedTabIndex = vm.selectedTab.intValue,
+                modifier = Modifier.fillMaxWidth(),
+                tabs = {
+                    vm.tabs.forEach {
+                        Tab(
+                            text = { Text(text = it) },
+                            selected = vm.selectedTab.intValue == vm.tabs.indexOf(it),
+                            onClick = {
+                                vm.onInteraction(PlayerListInteractions.SelectTab(vm.tabs.indexOf(it)))
+                            }
+                        )
+                    }
+                })
+
+            if (vm.currentPlayerEdited.value != null) {
                 ModalBottomSheet(
                     onDismissRequest = {
-                        vm.onInteraction(PersonListInteractions.PerformFormFinished(PersonFormResult.Cancelled))
+                        vm.onInteraction(PlayerListInteractions.PerformFormFinished(PlayerFormResult.Cancelled))
                     },
                     sheetState = vm.bottomSheetState,
                     windowInsets = WindowInsets(0)
@@ -126,12 +139,12 @@ private fun PersonListUi(vm: PersonListViewModel) {
                         primitiveDataStoreProvider = AndroidStateHandler,
                         composableStateHandler = AndroidStateHandler,
                         factory = { iPrimitiveDataStoreProvider: IPrimitiveDataStoreProvider, iComposableStateHandler: IComposableStateHandler ->
-                            PersonFormViewModel(
+                            PlayerFormViewModel(
                                 iPrimitiveDataStoreProvider,
                                 iComposableStateHandler,
                             )
                         },
-                        key1 = vm.currentPersonEdited
+                        key1 = vm.currentPlayerEdited
                     ) { formViewModel ->
                         PersonFormUi(formViewModel, vm)
                     }
@@ -139,7 +152,7 @@ private fun PersonListUi(vm: PersonListViewModel) {
             }
 
             LazyColumn {
-                vm.personList.value.forEach { person ->
+                vm.playerList.value.forEach { person ->
                     item {
                         Card(modifier = Modifier.padding(8.dp)) {
                             Text(
@@ -173,20 +186,23 @@ private fun PersonListUi(vm: PersonListViewModel) {
  * are provided to determine the next steps.
  *
  * This UI is interactive and reacts based on the state and functions provided by two ViewModels:
- * - [vmForm]: [PersonFormViewModel] manages the form's state, specifically the inputs for first name and last name.
- * - [vmList]: [PersonListViewModel] is responsible for adding the new person to the list or cancelling the operation.
+ * - [vmForm]: [PlayerFormViewModel] manages the form's state, specifically the inputs for first name and last name.
+ * - [vmList]: [PlayerListViewModel] is responsible for adding the new person to the list or cancelling the operation.
  *
- * @param vmForm The [PersonFormViewModel] instance which drives the state for the form inputs.
- * @param vmList The [PersonListViewModel] instance used to interact with the list of persons.
+ * @param vmForm The [PlayerFormViewModel] instance which drives the state for the form inputs.
+ * @param vmList The [PlayerListViewModel] instance used to interact with the list of persons.
  *
  * @see TextEntry for individual input fields representation.
- * @see PersonListUi for the overall person list UI.
+ * @see PlayerListView for the overall person list UI.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PersonFormUi(vmForm: PersonFormViewModel, vmList: PersonListViewModel) {
-    Column(modifier = Modifier.fillMaxWidth().padding(
-       bottom =  100.dp
-    )) {
+private fun PersonFormUi(vmForm: PlayerFormViewModel, vmList: PlayerListViewModel) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(
+            bottom = 100.dp
+        )
+    ) {
         TextEntry(
             label = "First Name",
             text = vmForm.personFirstName,
@@ -197,19 +213,37 @@ private fun PersonFormUi(vmForm: PersonFormViewModel, vmList: PersonListViewMode
             text = vmForm.personLastName,
             Modifier.fillMaxWidth().padding(8.dp)
         )
+        Area.values().forEach {
+            FilterChip(
+                label = { Text(it.name) },
+                selected = vmForm.selectedAreas.collectAsState().value.contains(it),
+                onClick = {
+                    vmForm.selectedAreas.value = vmForm.selectedAreas.value.toMutableSet().apply {
+                        if (it in this) {
+                            remove(it)
+                        } else {
+                            add(it)
+                        }
+                    }
+                },
+                modifier = Modifier.padding(4.dp).fillMaxWidth()
+            )
+        }
+
         Row {
             FilledTonalButton(onClick = {
-                vmList.onInteraction(PersonListInteractions.PerformFormFinished(PersonFormResult.Cancelled))
+                vmList.onInteraction(PlayerListInteractions.PerformFormFinished(PlayerFormResult.Cancelled))
             }, modifier = Modifier.weight(1f)) {
                 Text(text = "Cancel")
             }
             Button(onClick = {
                 vmList.onInteraction(
-                    PersonListInteractions.PerformFormFinished(
-                        PersonFormResult.FormFinished(
-                            Person(
+                    PlayerListInteractions.PerformFormFinished(
+                        PlayerFormResult.FormFinished(
+                            Player(
                                 vmForm.personFirstName.value,
-                                vmForm.personLastName.value
+                                vmForm.personLastName.value,
+                                vmForm.selectedAreas.value
                             )
                         )
                     )

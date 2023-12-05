@@ -108,3 +108,33 @@ fun <T : StatedComposeViewModel> StatedComposableViewModel(
     // Invokes the consumer [content] lambda with the created [ComposeViewModel] instance.
     content(viewModel)
 }
+
+
+@Composable
+fun <T : StatedNavComposeViewModel> StatedNavComposableViewModel(
+    primitiveDataStoreProvider: IPrimitiveDataStoreProvider,
+    composableStateHandler: IComposableStateHandler,
+    navOrchestrator: INavigationOrchestrator,
+    factory: ((IPrimitiveDataStoreProvider, IComposableStateHandler, INavigationOrchestrator) -> T),
+    key1: Any? = null,
+    content: @Composable (T) -> Unit
+) {
+    val viewModel: T = remember(key1) { factory(primitiveDataStoreProvider, composableStateHandler, navOrchestrator) }
+
+    /**
+     * Manages the disposal process of the [ComposeViewModel] and its associated resources. When the
+     * composable associated with this ViewModel is removed from the hierarchy, or when there is a
+     * change in the provided key, this effect will trigger the [ComposeViewModel.clearViewModel] method
+     * to clean up resources.
+     *
+     * @see DisposableEffect
+     */
+    DisposableEffect(key1 = true) {
+        onDispose {
+            viewModel.clearViewModel()
+        }
+    }
+
+    // Invokes the consumer [content] lambda with the created [ComposeViewModel] instance.
+    content(viewModel)
+}
